@@ -250,7 +250,12 @@ module overmind::nft_lottery {
         recipient: address, 
         ctx: &mut TxContext
     ) {
-        
+        validate_lottery_withdrawal_cap(lottery, lottery_cap);
+        validate_winning_number(lottery);
+        validate_if_lottery_is_not_cancelled(lottery);
+
+        let b = balance::withdraw_all(&mut lottery.balance);
+        transfer::public_transfer(coin::from_balance(b, ctx), recipient);
     }
 
     /*
@@ -406,6 +411,18 @@ module overmind::nft_lottery {
 
     fun validate_range(range: u64, min: u64) {
         assert!(range >= min, EInvalidRange);
+    }
+
+    fun validate_lottery_withdrawal_cap<T: key + store>(lottery: &Lottery<T>, withdrawal_cap: &WithdrawalCapability) {
+        assert!(withdrawal_cap.lottery == object::id(lottery), ENoWithdrawalCapability);
+    }
+
+    fun validate_if_lottery_is_not_cancelled<T: key + store>(lottery: &Lottery<T>) {
+        assert!(lottery.cancelled == true, ELotteryCancelled);
+    }
+
+    fun validate_winning_number<T: key + store>(lottery: &Lottery<T>) {
+        assert!(option::is_some(&lottery.winning_number), ELotteryHasNoWinningNumber)
     }
 
     //==============================================================================================
