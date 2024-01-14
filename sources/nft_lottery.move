@@ -222,7 +222,18 @@ module overmind::nft_lottery {
         recipient: address,
         ctx: &mut TxContext
     ) {
+        validate_participants_number_required(participants, 1);
+        validate_range(range, 1000);
+
+        let (withdrawal_cap, lottery) = new_lottery<T>(nft, participants, price, range, clock,start_time, end_time, ctx);
+        let id_lottery = object::uid_to_inner(&lottery.id);
         
+        transfer::transfer(withdrawal_cap, recipient);
+        transfer::share_object(lottery);
+
+        event::emit(LotteryCreated {
+            lottery: id_lottery
+        })        
     }
 
     /*
@@ -362,11 +373,41 @@ module overmind::nft_lottery {
     //==============================================================================================
     // Helper functions - Add your helper functions here (if any)
     //==============================================================================================
+    fun new_lottery<T: key + store>(nft: T, participants: u64, price: u64, range: u64, clock: &Clock, start_time: u64, end_time: u64, ctx: &mut TxContext): (WithdrawalCapability, Lottery<T>) {
+        let lottery = Lottery<T> {
+            id: object::new(ctx),
+            nft: option::some(nft),
+            participants,
+            price,
+            balance: balance::zero(),
+            range,
+            winning_number: option::none(),
+            start_time: clock::timestamp_ms(clock) + start_time,
+            end_time: clock::timestamp_ms(clock) + end_time,
+            tickets: vec_set::empty(),
+            cancelled: false
+        };
+
+        let id_lottery = object::uid_to_inner(&lottery.id);
+        let withdrawal_cap = WithdrawalCapability {
+            id: object::new(ctx),
+            lottery: id_lottery, 
+        };
+
+        (withdrawal_cap, lottery)
+    }
 
     //==============================================================================================
     // Validation functions - Add your validation functions here (if any)
     //==============================================================================================
-    
+    fun validate_participants_number_required(participants: u64, number_required: u64) {
+        assert!(participants >= number_required, EInvalidNumberOfParticipants);
+    }
+
+    fun validate_range(range: u64, min: u64) {
+        assert!(range >= min, EInvalidRange);
+    }
+
     //==============================================================================================
     // Tests
     //==============================================================================================
