@@ -255,7 +255,14 @@ module overmind::nft_lottery {
         validate_if_lottery_is_not_cancelled(lottery);
 
         let b = balance::withdraw_all(&mut lottery.balance);
+        let amount = balance::value(&b);
         transfer::public_transfer(coin::from_balance(b, ctx), recipient);
+
+        event::emit(LotteryWithdrawal {
+            lottery: object::id(lottery),
+            amount,
+            recipient
+        });
     }
 
     /*
@@ -350,7 +357,12 @@ module overmind::nft_lottery {
         ticket: &LotteryTicket, 
         recipient: address
     ) {
-        
+        validate_lottery_for_claim(lottery, ticket);
+        validate_nft(&lottery.nft);
+        validate_winning_number(lottery);
+        validate_winning_match(lottery, ticket.ticket_number);
+
+        transfer::public_transfer(option::extract(&mut lottery.nft), recipient);
     } 
 
     /*
@@ -472,6 +484,18 @@ module overmind::nft_lottery {
     fun validate_if_lottery_is_terminate<T: key + store>(lottery: &Lottery<T>, clock: &Clock) {
         let is_terminate = clock::timestamp_ms(clock) >= lottery.end_time;
         assert!(is_terminate == true, EStartOrEndTimeInThePast);
+    }
+
+    fun validate_nft<T>(nft: &Option<T>) {
+        assert!(option::is_some(nft), ENoPrizeAvailable);
+    }
+
+    fun validate_winning_match<T: key + store>(lottery: &mut Lottery<T>, ticket_number: u64) {
+        assert!(option::extract(&mut lottery.winning_number) == ticket_number, ENotWinningNumber);
+    }
+
+    fun validate_lottery_for_claim<T: key + store>(lottery: &Lottery<T>, ticket: &LotteryTicket) {
+        assert!(object::id(lottery) == ticket.lottery, EInvalidLottery);
     }
 
     //==============================================================================================
