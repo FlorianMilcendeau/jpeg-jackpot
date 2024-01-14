@@ -276,7 +276,26 @@ module overmind::nft_lottery {
         recipient: address, 
         ctx: &mut TxContext
     ) {
-        
+        validate_if_lottery_is_not_cancelled(lottery);
+        validate_payment(payment, lottery.price);
+        validate_range(ticket_number, lottery.range);
+        validate_ticket_available_for_buy(&lottery.tickets, ticket_number);
+
+        let id_lottery = object::uid_to_inner(&lottery.id);
+        let tickets = &mut lottery.tickets;
+
+        vec_set::insert(tickets, ticket_number);
+        let ticket = new_ticket_lottery(ticket_number, id_lottery, ctx);
+
+
+        let c = coin::split(payment, lottery.price, ctx);
+        coin::put(&mut lottery.balance, c);
+        transfer::transfer(ticket, recipient);
+
+        event::emit(LotteryTicketBought {
+            ticket_number,
+            lottery: id_lottery,
+        })
     }
 
     /*
@@ -402,6 +421,14 @@ module overmind::nft_lottery {
         (withdrawal_cap, lottery)
     }
 
+    fun new_ticket_lottery(ticket_number: u64, id_lottery: ID, ctx: &mut TxContext): LotteryTicket {
+        LotteryTicket {
+            id: object::new(ctx),
+            lottery: id_lottery,
+            ticket_number,
+        }
+    }
+
     //==============================================================================================
     // Validation functions - Add your validation functions here (if any)
     //==============================================================================================
@@ -410,7 +437,7 @@ module overmind::nft_lottery {
     }
 
     fun validate_range(range: u64, min: u64) {
-        assert!(range >= min, EInvalidRange);
+        assert!(range <= min, EInvalidRange);
     }
 
     fun validate_lottery_withdrawal_cap<T: key + store>(lottery: &Lottery<T>, withdrawal_cap: &WithdrawalCapability) {
@@ -418,11 +445,19 @@ module overmind::nft_lottery {
     }
 
     fun validate_if_lottery_is_not_cancelled<T: key + store>(lottery: &Lottery<T>) {
-        assert!(lottery.cancelled == true, ELotteryCancelled);
+        assert!(lottery.cancelled != true, ELotteryCancelled);
     }
 
     fun validate_winning_number<T: key + store>(lottery: &Lottery<T>) {
         assert!(option::is_some(&lottery.winning_number), ELotteryHasNoWinningNumber)
+    }
+
+    fun validate_payment(payment: &Coin<SUI>, min_amount: u64) {
+        assert!(coin::value(payment) >= min_amount, EInsufficientFunds);
+    }
+
+    fun validate_ticket_available_for_buy(tickets: &VecSet<u64>, ticket_number: u64) {
+        assert!(vec_set::contains(tickets, &ticket_number) == false, ETicketAlreadyGone);
     }
 
     //==============================================================================================
