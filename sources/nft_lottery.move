@@ -325,7 +325,16 @@ module overmind::nft_lottery {
         clock: &Clock,
         winning_number: u64
     ) {
+        validate_participants_number_required(lottery.participants, vec_set::size(&lottery.tickets));
+        validate_if_lottery_is_not_cancelled(lottery);
+        validate_if_lottery_is_terminate(lottery, clock);
 
+        lottery.winning_number = option::some(winning_number);
+
+        event::emit(LotteryWinner { 
+            winning_number,
+            lottery: object::id(lottery),
+        });
     }
     
     /*
@@ -458,6 +467,11 @@ module overmind::nft_lottery {
 
     fun validate_ticket_available_for_buy(tickets: &VecSet<u64>, ticket_number: u64) {
         assert!(vec_set::contains(tickets, &ticket_number) == false, ETicketAlreadyGone);
+    }
+
+    fun validate_if_lottery_is_terminate<T: key + store>(lottery: &Lottery<T>, clock: &Clock) {
+        let is_terminate = clock::timestamp_ms(clock) >= lottery.end_time;
+        assert!(is_terminate == true, EStartOrEndTimeInThePast);
     }
 
     //==============================================================================================
