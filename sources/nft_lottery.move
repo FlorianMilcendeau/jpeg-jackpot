@@ -225,7 +225,25 @@ module overmind::nft_lottery {
         validate_participants_number_required(participants, 1);
         validate_range(range, 1000);
 
-        let (withdrawal_cap, lottery) = new_lottery<T>(nft, participants, price, range, clock,start_time, end_time, ctx);
+        let lottery = Lottery<T> {
+            id: object::new(ctx),
+            nft: option::some(nft),
+            participants,
+            price,
+            balance: balance::zero(),
+            range,
+            winning_number: option::none(),
+            start_time: clock::timestamp_ms(clock) + start_time,
+            end_time: clock::timestamp_ms(clock) + end_time,
+            tickets: vec_set::empty(),
+            cancelled: false
+        };
+
+        let id_lottery = object::uid_to_inner(&lottery.id);
+        let withdrawal_cap = WithdrawalCapability {
+            id: object::new(ctx),
+            lottery: id_lottery, 
+        };
         let id_lottery = object::uid_to_inner(&lottery.id);
         
         transfer::transfer(withdrawal_cap, recipient);
@@ -388,7 +406,6 @@ module overmind::nft_lottery {
         cancelled_lottery(lottery);    
 
         let b = balance::split(&mut lottery.balance, lottery.price);
-        let amount = balance::value(&b);
         transfer::public_transfer(coin::from_balance(b, ctx), recipient);
 
         vec_set::remove(&mut lottery.tickets, &ticket.ticket_number);
@@ -429,36 +446,15 @@ module overmind::nft_lottery {
         lottery: &mut Lottery<T>,
         ticket: LotteryTicket
     ) {
-        
+        validate_ticket_available(&lottery.tickets, ticket.ticket_number);
+
+        let LotteryTicket { id, ticket_number: _, lottery: _} = ticket;
+        object::delete(id);
     }
 
     //==============================================================================================
     // Helper functions - Add your helper functions here (if any)
     //==============================================================================================
-    fun new_lottery<T: key + store>(nft: T, participants: u64, price: u64, range: u64, clock: &Clock, start_time: u64, end_time: u64, ctx: &mut TxContext): (WithdrawalCapability, Lottery<T>) {
-        let lottery = Lottery<T> {
-            id: object::new(ctx),
-            nft: option::some(nft),
-            participants,
-            price,
-            balance: balance::zero(),
-            range,
-            winning_number: option::none(),
-            start_time: clock::timestamp_ms(clock) + start_time,
-            end_time: clock::timestamp_ms(clock) + end_time,
-            tickets: vec_set::empty(),
-            cancelled: false
-        };
-
-        let id_lottery = object::uid_to_inner(&lottery.id);
-        let withdrawal_cap = WithdrawalCapability {
-            id: object::new(ctx),
-            lottery: id_lottery, 
-        };
-
-        (withdrawal_cap, lottery)
-    }
-
     fun new_ticket_lottery(ticket_number: u64, id_lottery: ID, ctx: &mut TxContext): LotteryTicket {
         LotteryTicket {
             id: object::new(ctx),
@@ -504,7 +500,7 @@ module overmind::nft_lottery {
         assert!(vec_set::contains(tickets, &ticket_number) == false, ETicketAlreadyGone);
     }
 
-    fun validate_ticket_available_for_refund(tickets: &VecSet<u64>, ticket_number: u64) {
+    fun validate_ticket_available(tickets: &VecSet<u64>, ticket_number: u64) {
         assert!(vec_set::contains(tickets, &ticket_number) == true, ETicketNotAvailable);
     }
 
@@ -532,12 +528,12 @@ module overmind::nft_lottery {
     fun validate_if_lottery_can_be_canceled<T: key + store>(lottery: &Lottery<T>, clock: &Clock) {
         let delay = lottery.end_time + DELAY_7_DAYS;
         if (option::is_some(&lottery.winning_number) || clock::timestamp_ms(clock) <= delay) {
-            abort ENotCancelled;
+            abort ENotCancelled
         };
     }
 
     fun validate_refund<T: key + store>(lottery: &Lottery<T>, ticket: &LotteryTicket, clock: &Clock) {
-        validate_ticket_available_for_refund(&lottery.tickets, ticket.ticket_number);
+        validate_ticket_available(&lottery.tickets, ticket.ticket_number);
         validate_if_lottery_can_be_canceled(lottery, clock);        
     }
 
