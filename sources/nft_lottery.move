@@ -55,7 +55,7 @@ module overmind::nft_lottery {
     //==============================================================================================
     // Constants - Add your constants here (if any)
     //==============================================================================================
-
+    const DELAY_7_DAYS:u64 = 24 * 60 * 60 * 1000 * 7;
     //==============================================================================================
     // Error codes - DO NOT MODIFY
     //==============================================================================================
@@ -251,8 +251,8 @@ module overmind::nft_lottery {
         ctx: &mut TxContext
     ) {
         validate_lottery_withdrawal_cap(lottery, lottery_cap);
-        validate_winning_number(lottery);
         validate_if_lottery_is_not_cancelled(lottery);
+        validate_winning_number(lottery);
 
         let b = balance::withdraw_all(&mut lottery.balance);
         let amount = balance::value(&b);
@@ -283,6 +283,7 @@ module overmind::nft_lottery {
         recipient: address, 
         ctx: &mut TxContext
     ) {
+        validate_if_lottery_has_already_run(lottery);
         validate_if_lottery_is_not_cancelled(lottery);
         validate_payment(payment, lottery.price);
         validate_range(ticket_number, lottery.range);
@@ -382,7 +383,15 @@ module overmind::nft_lottery {
         recipient: address, 
         ctx: &mut TxContext
     ) {
-        
+        validate_refund(lottery, ticket, clock);
+
+        cancelled_lottery(lottery);    
+
+        let b = balance::split(&mut lottery.balance, lottery.price);
+        let amount = balance::value(&b);
+        transfer::public_transfer(coin::from_balance(b, ctx), recipient);
+
+        vec_set::remove(&mut lottery.tickets, &ticket.ticket_number);
     }
 
     /*
@@ -450,6 +459,12 @@ module overmind::nft_lottery {
         }
     }
 
+    fun cancelled_lottery<T: key + store>(lottery: &mut Lottery<T>) {
+        if (lottery.cancelled == false) {
+            lottery.cancelled = true;
+        };
+    }
+
     //==============================================================================================
     // Validation functions - Add your validation functions here (if any)
     //==============================================================================================
@@ -481,6 +496,10 @@ module overmind::nft_lottery {
         assert!(vec_set::contains(tickets, &ticket_number) == false, ETicketAlreadyGone);
     }
 
+    fun validate_ticket_available_for_refund(tickets: &VecSet<u64>, ticket_number: u64) {
+        assert!(vec_set::contains(tickets, &ticket_number) == true, ETicketNotAvailable);
+    }
+
     fun validate_if_lottery_is_terminate<T: key + store>(lottery: &Lottery<T>, clock: &Clock) {
         let is_terminate = clock::timestamp_ms(clock) >= lottery.end_time;
         assert!(is_terminate == true, EStartOrEndTimeInThePast);
@@ -496,6 +515,19 @@ module overmind::nft_lottery {
 
     fun validate_lottery_for_claim<T: key + store>(lottery: &Lottery<T>, ticket: &LotteryTicket) {
         assert!(object::id(lottery) == ticket.lottery, EInvalidLottery);
+    }
+
+    fun validate_if_lottery_has_already_run<T: key + store>(lottery: &Lottery<T>) {
+        assert!(option::is_none(&lottery.winning_number), ELotteryHasAlreadyRun);
+    }
+
+    fun validate_refund<T: key + store>(lottery: &Lottery<T>, ticket: &LotteryTicket, clock: &Clock) {
+        validate_ticket_available_for_refund(&lottery.tickets, ticket.ticket_number);
+
+        let delay = lottery.end_time + DELAY_7_DAYS;
+        if (option::is_some(&lottery.winning_number) && clock::timestamp_ms(clock) <= delay) {
+            abort ENotCancelled;
+        };
     }
 
     //==============================================================================================
