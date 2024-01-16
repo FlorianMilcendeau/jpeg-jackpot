@@ -408,7 +408,15 @@ module overmind::nft_lottery {
         recipient: address, 
         withdrawal_cap: WithdrawalCapability
     ) {
-        
+        validate_if_lottery_can_be_canceled(lottery, clock);
+        validate_lottery_withdrawal_cap(lottery, &withdrawal_cap);
+        validate_nft(&lottery.nft);
+
+        cancelled_lottery(lottery);
+
+        transfer::public_transfer(option::extract(&mut lottery.nft), recipient);
+        let WithdrawalCapability { id, lottery: _ } = withdrawal_cap;
+        object::delete(id);
     }
 
     /*
@@ -521,13 +529,16 @@ module overmind::nft_lottery {
         assert!(option::is_none(&lottery.winning_number), ELotteryHasAlreadyRun);
     }
 
-    fun validate_refund<T: key + store>(lottery: &Lottery<T>, ticket: &LotteryTicket, clock: &Clock) {
-        validate_ticket_available_for_refund(&lottery.tickets, ticket.ticket_number);
-
+    fun validate_if_lottery_can_be_canceled<T: key + store>(lottery: &Lottery<T>, clock: &Clock) {
         let delay = lottery.end_time + DELAY_7_DAYS;
-        if (option::is_some(&lottery.winning_number) && clock::timestamp_ms(clock) <= delay) {
+        if (option::is_some(&lottery.winning_number) || clock::timestamp_ms(clock) <= delay) {
             abort ENotCancelled;
         };
+    }
+
+    fun validate_refund<T: key + store>(lottery: &Lottery<T>, ticket: &LotteryTicket, clock: &Clock) {
+        validate_ticket_available_for_refund(&lottery.tickets, ticket.ticket_number);
+        validate_if_lottery_can_be_canceled(lottery, clock);        
     }
 
     //==============================================================================================
